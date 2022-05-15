@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service
 import org.springframework.web.client.RestTemplate
 import org.springframework.web.server.ResponseStatusException
 import java.util.*
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 @Service
@@ -16,18 +17,24 @@ class ToxicService {
 
     val toxicCollection: MutableMap<Date, String> = mutableMapOf()
 
+    var currentToxicLevel: Number = 0
+
     fun increase(deviceId: String) {
         val toxicCalculationDateTimeStart = getTimeSecondsAgo(secondsAmountForToxicCalculation)
         val isAlreadyVoted = toxicCollection.filter { it.key > toxicCalculationDateTimeStart }.values.contains(deviceId)
+
         if (isAlreadyVoted) {
             throw ResponseStatusException(HttpStatus.FORBIDDEN);
         } else {
             toxicCollection.put(Date(), deviceId)
-            updateBotStatus(getToxicLevel())
+            val previousToxicLevel = currentToxicLevel;
+            currentToxicLevel = calculateToxicLevel()
+            updateBotStatus(currentToxicLevel, previousToxicLevel)
         }
     }
 
-    private fun updateBotStatus(toxicLevel: Number) {
+    private fun updateBotStatus(toxicLevel: Number, previousToxicLevel: Number) {
+        if (abs(toxicLevel.toInt() - previousToxicLevel.toInt()) < 1) return;
         val updateUrl = "http://172.105.91.137:8081/toxic-level-updated";
 
         val restTemplate = RestTemplate()
@@ -48,6 +55,9 @@ class ToxicService {
     }
 
     fun getToxicLevel(): Number {
+        return currentToxicLevel
+    }
+    fun calculateToxicLevel(): Number {
         val toxicCalculationDateTimeStart = getTimeSecondsAgo(secondsAmountForToxicCalculation)
         var toxicAverageLevel = toxicCollection.filter { it.key > toxicCalculationDateTimeStart }.size / averageToxicCoefficient
         if (toxicAverageLevel > 4) toxicAverageLevel = 4.0;
